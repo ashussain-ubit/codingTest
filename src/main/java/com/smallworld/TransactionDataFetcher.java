@@ -6,6 +6,10 @@ import org.codehaus.jackson.type.TypeReference;
 
 import java.io.File;
 import java.math.BigDecimal;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -19,12 +23,17 @@ public class TransactionDataFetcher {
      */
     public BigDecimal getTotalTransactionAmount() throws Exception{
         ObjectMapper mapper = new ObjectMapper();
-        List<Transaction> transactions = mapper.readValue(new File("transactions.json"), new TypeReference<List<Transaction>>(){});
-
-        BigDecimal totalAmount = transactions.stream()
-                .map(Transaction::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
+        BigDecimal totalAmount = new BigDecimal(0);
+        Path directory = Paths.get(System.getProperty("user.dir"));
+        try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(directory, "*.json")) {
+            for (Path path : directoryStream) {
+                String content = new String(Files.readAllBytes(path));
+                List<Transaction> transactions = mapper.readValue(content, new TypeReference<List<Transaction>>(){});
+                totalAmount = totalAmount.add(transactions.stream()
+                        .map(Transaction::getAmount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add));
+            }
+        }
         return totalAmount;
     }
 
@@ -33,18 +42,26 @@ public class TransactionDataFetcher {
      */
     public BigDecimal getTotalTransactionAmountSentBy(String senderFullName) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        List<Transaction> transactions = mapper.readValue(new File("transactions.json"), new TypeReference<List<Transaction>>(){});
+        BigDecimal totalAmount = new BigDecimal(0);
 
-        return transactions.stream()
-                .filter(transaction -> transaction.getSenderFullName().equals(senderFullName))
-                .collect(Collectors.toMap(
-                        Transaction::getMtn,
-                        Function.identity(),
-                        (existing, replacement) -> existing))
-                .values()
-                .stream()
-                .map(Transaction::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        Path directory = Paths.get(System.getProperty("user.dir"));
+        try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(directory, "*.json")) {
+            for (Path path : directoryStream) {
+                String content = new String(Files.readAllBytes(path));
+                List<Transaction> transactions = mapper.readValue(content, new TypeReference<List<Transaction>>(){});
+                totalAmount = totalAmount.add(transactions.stream()
+                        .filter(transaction -> transaction.getSenderFullName().equals(senderFullName))
+                        .collect(Collectors.toMap(
+                                Transaction::getMtn,
+                                Function.identity(),
+                                (existing, replacement) -> existing))
+                        .values()
+                        .stream()
+                        .map(Transaction::getAmount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add));
+            }
+        }
+        return totalAmount;
     }
 
     /**
@@ -52,12 +69,20 @@ public class TransactionDataFetcher {
      */
     public BigDecimal getMaxTransactionAmount() throws Exception{
         ObjectMapper mapper = new ObjectMapper();
-        List<Transaction> transactions = mapper.readValue(new File("transactions.json"), new TypeReference<List<Transaction>>(){});
+        BigDecimal macTransactionAmount = new BigDecimal(0);
 
-        return transactions.stream()
-                .map(Transaction::getAmount)
-                .max(Comparator.naturalOrder())
-                .orElse(null);
+        Path directory = Paths.get(System.getProperty("user.dir"));
+        try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(directory, "*.json")) {
+            for (Path path : directoryStream) {
+                String content = new String(Files.readAllBytes(path));
+                List<Transaction> transactions = mapper.readValue(content, new TypeReference<List<Transaction>>() {});
+                macTransactionAmount = macTransactionAmount.add(transactions.stream()
+                        .map(Transaction::getAmount)
+                        .max(Comparator.naturalOrder())
+                        .orElse(null));
+            }
+        }
+        return macTransactionAmount;
     }
 
     /**
@@ -65,12 +90,20 @@ public class TransactionDataFetcher {
      */
     public long countUniqueClients() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        List<Transaction> transactions = mapper.readValue(new File("transactions.json"), new TypeReference<List<Transaction>>(){});
+        long uniqueClientsCount = 0;
 
-        return transactions.stream()
-                .flatMap(transaction -> Stream.of(transaction.getSenderFullName(), transaction.getBeneficiaryFullName()))
-                .distinct()
-                .count();
+        Path directory = Paths.get(System.getProperty("user.dir"));
+        try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(directory, "*.json")) {
+            for (Path path : directoryStream) {
+                String content = new String(Files.readAllBytes(path));
+                List<Transaction> transactions = mapper.readValue(content, new TypeReference<List<Transaction>>() {});
+                uniqueClientsCount = uniqueClientsCount + transactions.stream()
+                        .flatMap(transaction -> Stream.of(transaction.getSenderFullName(), transaction.getBeneficiaryFullName()))
+                        .distinct()
+                        .count();
+            }
+        }
+        return uniqueClientsCount;
     }
 
     /**
@@ -79,11 +112,19 @@ public class TransactionDataFetcher {
      */
     public boolean hasOpenComplianceIssues(String clientFullName) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        List<Transaction> transactions = mapper.readValue(new File("transactions.json"), new TypeReference<List<Transaction>>(){});
+        boolean hasOpenIssue = false;
 
-        return transactions.stream()
-                .filter(transaction -> transaction.getSenderFullName().equals(clientFullName) || transaction.getBeneficiaryFullName().equals(clientFullName))
-                .anyMatch(transaction -> transaction.getIssueId() != 0 && !transaction.isIssueSolved());
+        Path directory = Paths.get(System.getProperty("user.dir"));
+        try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(directory, "*.json")) {
+            for (Path path : directoryStream) {
+                String content = new String(Files.readAllBytes(path));
+                List<Transaction> transactions = mapper.readValue(content, new TypeReference<List<Transaction>>() {});
+                hasOpenIssue = transactions.stream()
+                        .filter(transaction -> transaction.getSenderFullName().equals(clientFullName) || transaction.getBeneficiaryFullName().equals(clientFullName))
+                        .anyMatch(transaction -> transaction.getIssueId() != 0 && !transaction.isIssueSolved());
+            }
+        }
+        return hasOpenIssue;
     }
 
     /**
@@ -91,10 +132,24 @@ public class TransactionDataFetcher {
      */
     public Map<String, List<Transaction>> getTransactionsByBeneficiaryName() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        List<Transaction> transactions = mapper.readValue(new File("transactions.json"), new TypeReference<List<Transaction>>(){});
+        Map<String, List<Transaction>> map = new HashMap<>();
 
-        return transactions.stream()
-                .collect(Collectors.groupingBy(Transaction::getBeneficiaryFullName));
+        Path directory = Paths.get(System.getProperty("user.dir"));
+        try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(directory, "*.json")) {
+            for (Path path : directoryStream) {
+                String content = new String(Files.readAllBytes(path));
+                List<Transaction> transactions = mapper.readValue(content, new TypeReference<List<Transaction>>() {});
+                Map<String, List<Transaction>> tempMap = transactions.stream()
+                        .collect(Collectors.groupingBy(Transaction::getBeneficiaryFullName));
+                tempMap.forEach((key, value) ->
+                        map.merge(key, value, (existingList, newList) -> {
+                            existingList.addAll(newList);
+                            return existingList;
+                        })
+                );
+            }
+        }
+        return map;
     }
 
     /**
@@ -102,12 +157,21 @@ public class TransactionDataFetcher {
      */
     public Set<Integer> getUnsolvedIssueIds() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        List<Transaction> transactions = mapper.readValue(new File("transactions.json"), new TypeReference<List<Transaction>>(){});
+        Set<Integer> unsolvedIssueIds = new HashSet<>();
+        Path directory = Paths.get(System.getProperty("user.dir"));
 
-        return transactions.stream()
-                .filter(transaction -> transaction.getIssueId() != 0 && !transaction.isIssueSolved())
-                .map(Transaction::getIssueId)
-                .collect(Collectors.toSet());
+        try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(directory, "*.json")) {
+            for (Path path : directoryStream) {
+                String content = new String(Files.readAllBytes(path));
+                List<Transaction> transactions = mapper.readValue(content, new TypeReference<List<Transaction>>() {});
+                Set<Integer> tempSet = transactions.stream()
+                        .filter(transaction -> transaction.getIssueId() != 0 && !transaction.isIssueSolved())
+                        .map(Transaction::getIssueId)
+                        .collect(Collectors.toSet());
+                unsolvedIssueIds.addAll(tempSet);
+            }
+        }
+        return unsolvedIssueIds;
     }
 
     /**
@@ -115,12 +179,21 @@ public class TransactionDataFetcher {
      */
     public List<String> getAllSolvedIssueMessages() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        List<Transaction> transactions = mapper.readValue(new File("transactions.json"), new TypeReference<List<Transaction>>(){});
+        List<String> unsolvedMessages = new ArrayList<>();
 
-        return transactions.stream()
-                .filter(transaction -> transaction.getIssueId() != 0 && transaction.isIssueSolved())
-                .map(Transaction::getIssueMessage)
-                .collect(Collectors.toList());
+        Path directory = Paths.get(System.getProperty("user.dir"));
+        try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(directory, "*.json")) {
+            for (Path path : directoryStream) {
+                String content = new String(Files.readAllBytes(path));
+                List<Transaction> transactions = mapper.readValue(content, new TypeReference<List<Transaction>>() {});
+                List<String> tempList = transactions.stream()
+                        .filter(transaction -> transaction.getIssueId() != 0 && transaction.isIssueSolved())
+                        .map(Transaction::getIssueMessage)
+                        .collect(Collectors.toList());
+                unsolvedMessages.addAll(tempList);
+            }
+        }
+        return unsolvedMessages;
     }
 
     /**
